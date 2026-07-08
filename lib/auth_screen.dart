@@ -16,6 +16,7 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -51,6 +52,13 @@ class _AuthScreenState extends State<AuthScreen> {
       errorMessage = null;
     });
 
+    if (!isLogin && _nameController.text.trim().isEmpty) {
+      setState(() {
+        errorMessage = 'Please enter your name';
+      });
+      return;
+    }
+
     if (!isLogin && _passwordController.text != _confirmPasswordController.text) {
       setState(() {
         errorMessage = "Passwords don't match";
@@ -74,12 +82,18 @@ class _AuthScreenState extends State<AuthScreen> {
           password: _passwordController.text.trim(),
         );
 
+        final name = _nameController.text.trim();
+
+        // Keep displayName on the Auth user too, useful in a few places later
+        await credential.user!.updateDisplayName(name);
+
         await FirebaseFirestore.instance
             .collection('users')
             .doc(credential.user!.uid)
             .set({
           'email': credential.user!.email,
           'uid': credential.user!.uid,
+          'displayName': name,
         });
       }
     } on FirebaseAuthException catch (e) {
@@ -95,10 +109,38 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      setState(() {
+        errorMessage = 'Enter your email first, then tap "Forgot password?"';
+      });
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Password reset link sent to $email'),
+            backgroundColor: kNavy,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        errorMessage = _friendlyError(e.code);
+      });
+    }
+  }
+
   void _toggleMode() {
     setState(() {
       isLogin = !isLogin;
       errorMessage = null;
+      _nameController.clear();
       _confirmPasswordController.clear();
     });
   }
@@ -127,13 +169,28 @@ class _AuthScreenState extends State<AuthScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 12),
-                const _TokLogo(),
+                const TokLogo(),
                 const SizedBox(height: 8),
                 Text(
                   isLogin ? 'Welcome back' : 'Create your account',
                   style: const TextStyle(fontSize: 13, color: kSubtitleGray),
                 ),
                 const SizedBox(height: 14),
+
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  child: !isLogin
+                      ? Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: _buildField(
+                      controller: _nameController,
+                      label: 'Display name',
+                      hintText: 'What should people call you?',
+                    ),
+                  )
+                      : const SizedBox(width: double.infinity),
+                ),
+
                 _buildField(
                   controller: _emailController,
                   label: 'Email',
@@ -147,6 +204,26 @@ class _AuthScreenState extends State<AuthScreen> {
                   hintText: 'Enter your password',
                   obscure: true,
                 ),
+                if (isLogin)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _resetPassword,
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Forgot password?',
+                        style: TextStyle(
+                          color: kCoral,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
                   child: !isLogin
@@ -251,19 +328,20 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-class _TokLogo extends StatelessWidget {
-  const _TokLogo();
+class TokLogo extends StatelessWidget {
+  final double size;
+  const TokLogo({super.key, this.size = 110});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 110,
-      height: 110,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: kCoral,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(size * 0.25),
       ),
-      padding: const EdgeInsets.all(22),
+      padding: EdgeInsets.all(size * 0.2),
       child: CustomPaint(
         painter: _ChatBubblePainter(),
       ),
